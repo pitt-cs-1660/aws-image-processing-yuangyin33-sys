@@ -12,10 +12,6 @@ on:
 env:
   AWS_REGION: us-east-1
   AWS_ACCOUNT_ID: "946869378835"
-  # 这里使用“无 -fn 后缀”的函数名，和评分脚本一致
-  RESIZE_FN: "resize-lambda"
-  GREYSCALE_FN: "greyscale-lambda"
-  EXIF_FN: "exif-lambda"
 
 jobs:
   deploy:
@@ -28,15 +24,15 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - fn: ${{ env.RESIZE_FN }}
-            dir: lambdas/resize
-            repo: resize-lambda
-          - fn: ${{ env.GREYSCALE_FN }}
-            dir: lambdas/greyscale
-            repo: greyscale-lambda
-          - fn: ${{ env.EXIF_FN }}
-            dir: lambdas/exif
-            repo: exif-lambda
+          - fn: "resize-lambda"
+            dir: "lambdas/resize"
+            repo: "resize-lambda"
+          - fn: "greyscale-lambda"
+            dir: "lambdas/greyscale"
+            repo: "greyscale-lambda"
+          - fn: "exif-lambda"
+            dir: "lambdas/exif"
+            repo: "exif-lambda"
 
     steps:
       - name: Checkout
@@ -68,7 +64,7 @@ jobs:
           docker push "$ECR_REGISTRY/$ECR_REPOSITORY:latest"
           echo "IMAGE_URI=$ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG" >> "$GITHUB_OUTPUT"
 
-      - name: Create or Update Lambda function
+      - name: Create or update Lambda function
         env:
           IMAGE_URI: ${{ steps.build.outputs.IMAGE_URI }}
           ROLE_ARN: ${{ secrets.LAMBDA_ROLE_ARN }}
@@ -76,12 +72,8 @@ jobs:
         run: |
           set -euo pipefail
           if aws lambda get-function --function-name "$FN_NAME" >/dev/null 2>&1; then
-            echo "Updating function code: $FN_NAME"
-            aws lambda update-function-code \
-              --function-name "$FN_NAME" \
-              --image-uri "$IMAGE_URI"
+            aws lambda update-function-code --function-name "$FN_NAME" --image-uri "$IMAGE_URI"
           else
-            echo "Creating function: $FN_NAME"
             aws lambda create-function \
               --function-name "$FN_NAME" \
               --package-type Image \
@@ -92,10 +84,11 @@ jobs:
               --architectures x86_64
           fi
 
-      # 可选：打印函数当前镜像 URI 以便排错
       - name: Show deployed image
         run: |
           aws lambda get-function \
             --function-name "${{ matrix.fn }}" \
             --query 'Code.ImageUri' \
+            --output text
+
             --output text
