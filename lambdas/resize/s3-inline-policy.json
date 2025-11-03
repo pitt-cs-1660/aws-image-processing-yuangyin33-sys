@@ -1,0 +1,26 @@
+{
+  "Version": "2012-10-17",
+  "Statement": [
+    { "Sid": "ListBucketPrefix", "Effect": "Allow",
+      "Action": ["s3:ListBucket"],
+      "Resource": "arn:aws:s3:::yuangyin33",
+      "Condition": { "StringLike": { "s3:prefix": ["resize/*","processed/resize/*","processed/greyscale/*","processed/exif/*"]}}
+    },
+    { "Sid": "GetOriginalImages", "Effect": "Allow",
+      "Action": ["s3:GetObject"],
+      "Resource": "arn:aws:s3:::yuangyin33/resize/*"
+    },
+    { "Sid": "PutProcessedResize", "Effect": "Allow",
+      "Action": ["s3:PutObject"],
+      "Resource": "arn:aws:s3:::yuangyin33/processed/resize/*"
+    },
+    { "Sid": "PutProcessedGreyscale", "Effect": "Allow",
+      "Action": ["s3:PutObject"],
+      "Resource": "arn:aws:s3:::yuangyin33/processed/greyscale/*"
+    },
+    { "Sid": "PutProcessedExif", "Effect": "Allow",
+      "Action": ["s3:PutObject"],
+      "Resource": "arn:aws:s3:::yuangyin33/processed/exif/*"
+    }
+  ]
+}

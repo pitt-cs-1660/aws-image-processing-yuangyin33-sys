@@ -1,0 +1,15 @@
+{
+  "Version": "2012-10-17",
+  "Statement": [
+    { "Effect": "Allow", "Action": "ecr:GetAuthorizationToken", "Resource": "*" },
+    {
+      "Effect": "Allow",
+      "Action": [ "ecr:BatchGetImage", "ecr:GetDownloadUrlForLayer" ],
+      "Resource": [
+        "arn:aws:ecr:us-east-1:946869378835:repository/resize-lambda",
+        "arn:aws:ecr:us-east-1:946869378835:repository/greyscale-lambda",
+        "arn:aws:ecr:us-east-1:946869378835:repository/exif-lambda"
+      ]
+    }
+  ]
+}

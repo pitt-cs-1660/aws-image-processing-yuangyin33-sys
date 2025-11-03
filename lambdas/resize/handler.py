@@ -1,73 +1,88 @@
 import json
-from PIL import Image
 import io
-import boto3
 from pathlib import Path
+from urllib.parse import unquote_plus
 
-def download_from_s3(bucket, key):
-    s3 = boto3.client('s3')
-    buffer = io.BytesIO()
-    s3.download_fileobj(bucket, key, buffer)
-    buffer.seek(0)
-    return Image.open(buffer)
+import boto3
+from PIL import Image
 
-def upload_to_s3(bucket, key, data, content_type='image/jpeg'):
-    s3 = boto3.client('s3')
+
+# ---------- S3 helpers ----------
+def download_from_s3(bucket: str, key: str) -> Image.Image:
+    s3 = boto3.client("s3")
+    buf = io.BytesIO()
+    s3.download_fileobj(bucket, key, buf)
+    buf.seek(0)
+    return Image.open(buf)
+
+
+def upload_to_s3(bucket: str, key: str, data, content_type: str = "image/jpeg"):
+    s3 = boto3.client("s3")
     if isinstance(data, Image.Image):
-        buffer = io.BytesIO()
-        data.save(buffer, format='JPEG')
-        buffer.seek(0)
-        s3.upload_fileobj(buffer, bucket, key)
-    else:
+        buf = io.BytesIO()
+        # 强制输出 JPEG（统一）
+        data.save(buf, format="JPEG")
+        buf.seek(0)
+        s3.upload_fileobj(buf, bucket, key, ExtraArgs={"ContentType": content_type})
+    elif isinstance(data, (bytes, bytearray)):
         s3.put_object(Bucket=bucket, Key=key, Body=data, ContentType=content_type)
+    else:
+        # 其他（例如字符串）
+        s3.put_object(Bucket=bucket, Key=key, Body=str(data).encode("utf-8"), ContentType=content_type)
 
-def resize_handler(event, context):
+
+# ---------- event parsing ----------
+def _iter_s3_records(event):
     """
-    Resize Lambda - Process all images in the event
+    同时兼容：
+      A) S3 直触发: event["Records"][i]["s3"]
+      B) SNS 包裹:  event["Records"][i]["Sns"]["Message"] -> JSON -> Records[].s3
+    统一产出 (bucket, key)
     """
+    for rec in event.get("Records", []):
+        if "Sns" in rec:  # SNS-wrapped S3
+            try:
+                msg = rec["Sns"]["Message"]
+                payload = json.loads(msg)
+                for s3ev in payload.get("Records", []):
+                    s3r = s3ev.get("s3", {})
+                    bucket = s3r.get("bucket", {}).get("name")
+                    key = s3r.get("object", {}).get("key")
+                    if bucket and key:
+                        yield bucket, unquote_plus(key)
+            except Exception:
+                continue
+        else:  # native S3
+            s3r = rec.get("s3", {})
+            bucket = s3r.get("bucket", {}).get("name")
+            key = s3r.get("object", {}).get("key")
+            if bucket and key:
+                yield bucket, unquote_plus(key)
+
+
+# ---------- lambda entry ----------
+def handler(event, context):
     print("Resize Lambda triggered")
-    print(f"Event received with {len(event.get('Records', []))} SNS records")
+    ok = 0
+    fail = 0
 
-    processed_count = 0
-    failed_count = 0
-
-    # iterate over all SNS records
-    for sns_record in event.get('Records', []):
+    for bucket_name, object_key in _iter_s3_records(event):
         try:
-            # extract and parse SNS message
-            sns_message = json.loads(sns_record['Sns']['Message'])
+            print(f"Processing: s3://{bucket_name}/{object_key}")
+            img = download_from_s3(bucket_name, object_key)
 
-            # iterate over all S3 records in the SNS message
-            for s3_event in sns_message.get('Records', []):
-                try:
-                    s3_record = s3_event['s3']
-                    bucket_name = s3_record['bucket']['name']
-                    object_key = s3_record['object']['key']
+            # 核心：缩放到 512x512（LANCZOS）
+            resized = img.resize((512, 512), Image.Resampling.LANCZOS)
 
-                    print(f"Processing: s3://{bucket_name}/{object_key}")
-
-                    ######
-                    #
-                    #  TODO: add resize lambda code here
-                    #
-                    ######
-
-                    processed_count += 1
-
-                except Exception as e:
-                    failed_count += 1
-                    error_msg = f"Failed to process {object_key}: {str(e)}"
-                    print(error_msg)
-
+            filename = Path(object_key).name
+            out_key = f"processed/resize/{filename}"
+            upload_to_s3(bucket_name, out_key, resized, content_type="image/jpeg")
+            print(f"Uploaded: s3://{bucket_name}/{out_key}")
+            ok += 1
         except Exception as e:
-            print(f"Failed to process SNS record: {str(e)}")
-            failed_count += 1
+            print(f"❌ Failed: s3://{bucket_name}/{object_key} -> {e}")
+            fail += 1
 
-    summary = {
-        'statusCode': 200 if failed_count == 0 else 207,  # @note: 207 = multi-status
-        'processed': processed_count,
-        'failed': failed_count,
-    }
-
-    print(f"Processing complete: {processed_count} succeeded, {failed_count} failed")
-    return summary
+    result = {"statusCode": 200 if fail == 0 else 207, "processed": ok, "failed": fail}
+    print(result)
+    return result

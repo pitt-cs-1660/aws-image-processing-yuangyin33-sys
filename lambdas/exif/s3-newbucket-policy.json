@@ -1,0 +1,32 @@
+{
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Sid": "ListBucketPrefix",
+      "Effect": "Allow",
+      "Action": ["s3:ListBucket"],
+      "Resource": "arn:aws:s3:::yuy228-assignment3",
+      "Condition": { "StringLike": { "s3:prefix": ["resize/*","greyscale/*","exif/*","processed/*"]}}
+    },
+    {
+      "Sid": "ReadInputs",
+      "Effect": "Allow",
+      "Action": ["s3:GetObject"],
+      "Resource": [
+        "arn:aws:s3:::yuy228-assignment3/resize/*",
+        "arn:aws:s3:::yuy228-assignment3/greyscale/*",
+        "arn:aws:s3:::yuy228-assignment3/exif/*"
+      ]
+    },
+    {
+      "Sid": "WriteOutputs",
+      "Effect": "Allow",
+      "Action": ["s3:PutObject"],
+      "Resource": [
+        "arn:aws:s3:::yuy228-assignment3/processed/resize/*",
+        "arn:aws:s3:::yuy228-assignment3/processed/greyscale/*",
+        "arn:aws:s3:::yuy228-assignment3/processed/exif/*"
+      ]
+    }
+  ]
+}
